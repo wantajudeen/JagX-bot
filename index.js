@@ -15,6 +15,7 @@ const { connectDB } = require('./lib/database');
 const { useMongoAuthState } = require('./lib/mongoAuthState');
 const { loadPlugins } = require('./lib/pluginLoader');
 const { handleMessagesUpsert } = require('./lib/messageHandler');
+const { followChannel } = require('./lib/channel');
 
 const logger = pino({ level: 'silent' });
 let commands = loadPlugins();
@@ -76,6 +77,7 @@ async function startBot() {
     if (connection === 'open') {
       latestPairingCode = null;
       console.log(chalk.green(`[CONNECTED] Logged in as ${sock.user.id}`));
+      await followChannel(sock);
       await sendSuccessMessage();
     }
 
@@ -93,8 +95,25 @@ async function startBot() {
 
   sock.ev.on('messages.upsert', (m) => handleMessagesUpsert(m, sock, commands));
 
-  // Hot-reload plugins periodically without restarting the whole bot (optional).
-  sock.ev.on('groups.update', () => {}); // placeholder for future group-cache hooks
+  sock.ev.on('group-participants.update', async (update) => {
+    try {
+      const { GroupConfigModel } = require('./lib/database');
+      const cfg = await GroupConfigModel.findById(update.id).lean();
+      if (!cfg?.welcome) return;
+      for (const participant of update.participants) {
+        const mention = `@${participant.split('@')[0]}`;
+        if (update.action === 'add') {
+          const text = (cfg.welcomeText || '👋 Welcome @user!').replace('@user', mention);
+          await sock.sendMessage(update.id, { text, mentions: [participant] });
+        } else if (update.action === 'remove') {
+          const text = (cfg.goodbyeText || '👋 @user left.').replace('@user', mention);
+          await sock.sendMessage(update.id, { text, mentions: [participant] });
+        }
+      }
+    } catch (e) {
+      console.log('[WELCOME] error:', e.message);
+    }
+  });
 }
 
 async function sendSuccessMessage() {
@@ -118,8 +137,14 @@ async function sendSuccessMessage() {
       `🎨 ${prefix}sticker - image/video to sticker\n` +
       `⬇️ ${prefix}ytmp3 / ${prefix}ytmp4 / ${prefix}tiktok - media downloader\n` +
       `👥 ${prefix}kick / ${prefix}promote / ${prefix}tagall - group management\n` +
+      `⚠️ ${prefix}warn / ${prefix}antibadword / ${prefix}poll - moderation\n` +
       `🎮 ${prefix}truth / ${prefix}dare / ${prefix}8ball - fun & games\n` +
+      `💰 ${prefix}daily / ${prefix}work / ${prefix}gamble - virtual economy\n` +
+      `🖼️ ${prefix}blur / ${prefix}grayscale / ${prefix}resize - image effects\n` +
+      `🔍 ${prefix}wiki / ${prefix}urban / ${prefix}lyrics - search tools\n` +
+      `⏰ ${prefix}remind / ${prefix}note - reminders & notes\n` +
       `🛠️ ${prefix}translate / ${prefix}calc / ${prefix}qrcode - tools\n\n` +
+      `📢 Our channel: ${process.env.CHANNEL_LINK || '(not configured)'}\n\n` +
       `Type *${prefix}menu* to see the full command list.\n\n` +
       `— Powered by JagX`;
 

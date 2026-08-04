@@ -27,6 +27,15 @@ module.exports = [
       )
   },
   {
+    pattern: 'channel',
+    category: 'info',
+    desc: 'Get the official WhatsApp Channel link',
+    run: async (ctx) => {
+      if (!process.env.CHANNEL_LINK) return ctx.reply('No channel configured yet.');
+      await ctx.reply(`📢 Join our official channel:\n${process.env.CHANNEL_LINK}`);
+    }
+  },
+  {
     pattern: 'report',
     category: 'info',
     desc: 'Report a bug to the owner: .report <message>',
