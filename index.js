@@ -2,6 +2,7 @@ require('dotenv').config();
 const {
   default: makeWASocket,
   DisconnectReason,
+  fetchLatestWaWebVersion,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore
 } = require('@whiskeysockets/baileys');
@@ -31,17 +32,57 @@ app.get('/', (req, res) => {
       <img src="/logo.jpg" width="120" style="border-radius:20px"/>
       <h2>${process.env.BOT_NAME || 'JagX'} Bot</h2>
       <p>Status: ${sock?.user ? '🟢 Connected as ' + sock.user.id.split(':')[0] : '🟡 Waiting for pairing...'}</p>
-      ${latestPairingCode ? `<h1 style="letter-spacing:4px">${latestPairingCode}</h1><p>Enter this code in WhatsApp &gt; Linked Devices &gt; Link with phone number</p>` : ''}
+      ${latestPairingCode ? `<h1 style="letter-spacing:4px">${latestPairingCode}</h1><p>Enter this code in WhatsApp &gt; Linked Devices &gt; Link with phone number. It expires in about a minute and works only once — if it fails, request a new one below.</p>` : ''}
+      ${!sock?.user ? `
+        <form onsubmit="window.location.href='/pair/' + document.getElementById('num').value; return false;">
+          <p>Get / refresh your pairing code:</p>
+          <input id="num" type="text" placeholder="2348012345678" style="padding:8px;font-size:16px"/>
+          <button type="submit" style="padding:8px 16px;font-size:16px">Get Code</button>
+        </form>
+      ` : ''}
     </body></html>
   `);
 });
 app.use('/logo.jpg', express.static(path.join(__dirname, 'assets', 'logo.jpg')));
 app.get('/health', (req, res) => res.json({ ok: true, connected: !!sock?.user }));
 
+// Manually request a fresh pairing code on demand, for a given number, without
+// needing a full redeploy. Visit e.g. /pair/2348012345678 in your browser.
+app.get('/pair/:number', async (req, res) => {
+  try {
+    if (sock?.user) return res.send('Already connected as ' + sock.user.id.split(':')[0] + '. No need to pair again.');
+    const number = req.params.number.replace(/\D/g, '');
+    if (!number) return res.status(400).send('Invalid number. Use digits only with country code, e.g. /pair/2348012345678');
+    const code = await sock.requestPairingCode(number);
+    latestPairingCode = code?.match(/.{1,4}/g)?.join('-') || code;
+    console.log(chalk.yellow(`[PAIRING] New code requested for ${number}: ${latestPairingCode}`));
+    res.redirect('/');
+  } catch (e) {
+    res.status(500).send('Failed to request pairing code: ' + e.message);
+  }
+});
+
+async function getWaVersion() {
+  // fetchLatestBaileysVersion() is known (as of mid-2026) to sometimes report a
+  // stale WA Web version while claiming isLatest:true, which causes pairing
+  // codes to generate but the phone to show "Couldn't link device". Prefer
+  // fetchLatestWaWebVersion() - the actual WhatsApp Web build number - and only
+  // fall back to the Baileys helper if that request fails outright.
+  try {
+    const { version, isLatest } = await fetchLatestWaWebVersion({});
+    console.log(chalk.cyan(`[VERSION] Using live WA Web version ${version.join('.')} (isLatest=${isLatest})`));
+    return version;
+  } catch (e) {
+    console.log(chalk.yellow('[VERSION] fetchLatestWaWebVersion failed, falling back:'), e.message);
+    const { version } = await fetchLatestBaileysVersion();
+    return version;
+  }
+}
+
 async function startBot() {
   await connectDB();
   const { state, saveCreds } = await useMongoAuthState();
-  const { version } = await fetchLatestBaileysVersion();
+  const version = await getWaVersion();
 
   sock = makeWASocket({
     version,
