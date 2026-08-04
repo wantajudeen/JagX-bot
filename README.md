@@ -3,9 +3,10 @@
 A 24/7 WhatsApp bot built on [Baileys](https://github.com/WhiskeySockets/Baileys), connected via an
 **8-digit pairing code**, with session data stored in **MongoDB** so it survives restarts/redeploys.
 
-Currently ships with **92 commands** across 17 categories (core, info, anti-delete, group, moderation,
-sticker, media, text, downloader, search, fun, economy, reminder, tools, ai, status, owner) — including
-anti-delete, `.vv` (view-once revealer), a virtual economy, image effects, and a warning system.
+Currently ships with **115 commands** across 21 categories (core, info, anti-delete, group, moderation,
+sticker, media, text, downloader, search, fun, economy, reminder, tools, ai, status, owner, anime,
+games, crypto, misc) — including anti-delete, `.vv` (view-once revealer), real anti-link enforcement,
+a virtual economy, anime reactions, mini-games, and crypto prices.
 
 Some commands need a free API key to unlock (all optional, bot works fine without them):
 - `.weather` → `OPENWEATHER_API_KEY` (openweathermap.org)
